@@ -1,0 +1,4 @@
+{
+    "discord_token": "YOUR_DISCORD_BOT_TOKEN",
+    "weather_api_key": "YOUR_OPENWEATHERAPI_TOKEN"
+}
