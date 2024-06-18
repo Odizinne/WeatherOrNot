@@ -1,0 +1,2 @@
+# WeatherOrNot
+OpenWeather Discord Bot
