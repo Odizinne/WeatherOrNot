@@ -19,6 +19,7 @@ except FileNotFoundError:
     report_settings = {}
     logging.warning("No report task settings found.")
 
+
 def read_tokens(file_path='settings.json'):
     with open(file_path, 'r') as file:
         data = json.load(file)
