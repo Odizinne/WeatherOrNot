@@ -19,7 +19,6 @@ except FileNotFoundError:
     report_settings = {}
     logging.warning("No report task settings found.")
 
-
 def read_tokens(file_path='settings.json'):
     with open(file_path, 'r') as file:
         data = json.load(file)
@@ -53,15 +52,15 @@ weather_emojis = {
     "Tornado": "🌪️"
 }
 
-def get_hourly_weather(city):
-    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city},fr&appid={weather_api_key}&units=metric"
+def get_weather_data(city):
+    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={weather_api_key}&units=metric"
     response = requests.get(url)
     data = response.json()
 
     if data.get('cod') == '200':
         return data
     else:
-        print(f"Error fetching weather data for {city}: {data}")
+        logging.error(f"Error fetching weather data for {city}: {data}")
         return None
 
 def generate_weather_message(forecast, city_name):
@@ -79,7 +78,7 @@ def generate_weather_message(forecast, city_name):
 @bot.command(name='weather')
 async def weather(ctx, *city: str):
     city = ' '.join(city)
-    data = get_hourly_weather(city)
+    data = get_weather_data(city)
     if data is None:
         await ctx.send(f"Je n'ai pas trouvé {city}.")
         return
@@ -102,21 +101,30 @@ async def report(ctx, city: str, time: str = None):
     elif time is None:
         await ctx.send("Je ne comprend que le format heureHminute ou heureH (**`9h30`**, **`06h15`**, **`12h`**, **`23H32`**).")
     else:
-        hour, minute = time.split('h')
-        time = f"{hour.zfill(2)}h{minute.zfill(2)}"
-        match = re.match(r'^(\d{1,2})h(\d{2})$', time, re.I)
+        # Validate the city before proceeding by getting its weather data
+        data = get_weather_data(city)
+        if data is None:
+            await ctx.send(f"Je n'ai pas trouvé {city}. Veuillez vérifier le nom de la ville et réessayer.")
+            return
+
+        city_name = data['city']['name']
+        
+        # Match time with optional minutes, defaulting to '00' if not provided
+        match = re.match(r'^(\d{1,2})h(\d{2})?$', time, re.I)
         if match is None:
             await ctx.send("Invalid time format. Please use 'hourH' or 'hourHminute'.")
             return
 
         hour, minute = match.groups()
+        if minute is None:
+            minute = '00'
         if not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
             await ctx.send("Temps invalide dans cette dimension.")
             return
 
-        report_settings[str(ctx.author.id)] = (city, time)
-        await ctx.send(f"Bulletin journalier activé pour {city} à {time}.")
-        logging.info(f"Set up report for user {ctx.author.id} for city {city} at time {time}")
+        report_settings[str(ctx.author.id)] = (city_name, f"{hour.zfill(2)}h{minute.zfill(2)}")
+        await ctx.send(f"Bulletin journalier activé pour {city_name} à {hour.zfill(2)}h{minute.zfill(2)}.")
+        logging.info(f"Set up report for user {ctx.author.id} for city {city_name} at {hour.zfill(2)}h{minute.zfill(2)}")
 
     with open(REPORT_SETTINGS_FILE, 'w') as file:
         json.dump(report_settings, file)
@@ -137,7 +145,7 @@ async def send_reports():
             if not last_sent_time or (last_sent_time and last_sent_time.date() < now.date()):
                 user = bot.get_user(int(user_id))
                 if user is not None:
-                    data = get_hourly_weather(city)
+                    data = get_weather_data(city)
                     if data is not None:
                         forecast = data['list'][:8]
                         city_name = data['city']['name']
