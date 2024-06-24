@@ -121,26 +121,33 @@ async def report(ctx, city: str, time: str = None):
     with open(REPORT_SETTINGS_FILE, 'w') as file:
         json.dump(report_settings, file)
 
+last_sent = {}
+
 @tasks.loop(minutes=1)
 async def send_reports():
     now = datetime.now()
-    now_formatted = now.strftime('%Hh%M' if now.minute != 0 else '%Hh')
+    now_formatted = now.strftime('%Hh%M')
     logging.info(f"Running send_reports task at time {now_formatted}")
+    
     for user_id, (city, time) in report_settings.items():
         logging.info(f"Checking report for user {user_id} for city {city} at time {time}")
+        
         if now_formatted == time:
-            user = bot.get_user(int(user_id))
-            if user is not None:
-                data = get_hourly_weather(city)
-                if data is not None:
-                    forecast = data['list'][:8]
-                    city_name = data['city']['name']
-                    message = generate_weather_message(forecast, city_name)
-                    try:
-                        await user.send(message)
-                        logging.info(f"Sent report to user {user_id} for city {city}")
-                    except Exception as e:
-                        logging.error(f"Error sending message to user {user_id}: {e}")
+            last_sent_time = last_sent.get(user_id)
+            if not last_sent_time or (last_sent_time and last_sent_time.date() < now.date()):
+                user = bot.get_user(int(user_id))
+                if user is not None:
+                    data = get_hourly_weather(city)
+                    if data is not None:
+                        forecast = data['list'][:8]
+                        city_name = data['city']['name']
+                        message = generate_weather_message(forecast, city_name)
+                        try:
+                            await user.send(message)
+                            logging.info(f"Sent report to user {user_id} for city {city}")
+                            last_sent[user_id] = now
+                        except Exception as e:
+                            logging.error(f"Error sending message to user {user_id}: {e}")
 
 @bot.event
 async def on_ready():
